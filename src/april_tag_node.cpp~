@@ -1,4 +1,6 @@
-
+//
+// adapted from ros example and april tag examples - palash
+//
 #include <fstream>
 #include <ros/ros.h>
 #include <message_filters/subscriber.h>
@@ -18,17 +20,11 @@
 #include "seer/AprilTag.h"      // rosmsg
 #include "seer/AprilTagList.h"  // rosmsg
 #include "rigidtransform.h"
-#include "KalmanFilter.h"
-#include <tf/transform_broadcaster.h>
-
-std::string AprilTag;
 
 using std::ofstream;
 using namespace cv;
 using namespace std;
 using namespace libconfig;
-using namespace Eigen;
-
 
 static const std::string OPENCV_WINDOW = "Image window";
 
@@ -62,7 +58,7 @@ void wRo_to_euler(const Eigen::Matrix3d& wRo, double& yaw, double& pitch,
 
 class AprilTagNode {
   ros::NodeHandle nh_;
-   int j=0 ,j1=0,cnt=0;
+   int j=0;
   image_transport::ImageTransport it_;
   image_transport::Subscriber image_sub_;
   image_transport::Publisher image_pub_;
@@ -77,26 +73,27 @@ class AprilTagNode {
   double tag_size;               // tag side length of frame in meters
   bool show_debug_image;
   vector<Eigen::Vector3d> P1s, P2s,P2s_calc ,P3s,P4s;
- public:
-  void poseCallback(float a , float b , float c ,float roll ,float pitch ,float yaw )
-  {
-    static tf::TransformBroadcaster br;
-  tf::Transform transform;
-  transform.setOrigin( tf::Vector3(a,b,c) );
-  tf::Quaternion q;
- // q.setRPY(-roll, pitch, yaw);
-  //transform.setRotation(q);
-  br.sendTransform(tf::StampedTransform(transform, ros::Time::now(), "world", "AprilTag"));
+ 
 
-  }
-  int zz=0;
-  
+  /*int i,j;
+  config_t cfg,*cf;
+  for(i=0;i<3;i++)
+    for(j=0;j<3;j++)
+      config_setting_t *R = Eigen::Matrix3d::Constant(i,j,1.0);
+  config_setting_t *T = {0,0,0};
+  cf = &cfg;
+  config_init(cf);*/
+
+  // cv::Mat imgL;
+  // cv::Mat imgR;
+
+ public:
   AprilTagNode()
       : it_(nh_),
         tag_codes(AprilTags::tagCodes36h11),
         tag_detector(NULL),
-        camera_focal_length_y(4),
-        camera_focal_length_x(4),
+        camera_focal_length_y(414),
+        camera_focal_length_x(414),
         tag_size(0.015),  // 1 1/8in marker = 0.029m
         show_debug_image(false) {
     // Subscrive to input video feed and publish output video feed
@@ -110,8 +107,8 @@ class AprilTagNode {
     // be run simultaneously while using different parameters.
     ros::NodeHandle private_node_handle("~");
     private_node_handle.param<double>("focal_length_px", camera_focal_length_x,
-                                      570.0);
-    private_node_handle.param<double>("tag_size_cm", tag_size, 16);
+                                      700.0);
+    private_node_handle.param<double>("tag_size_cm", tag_size, 2.9);
     private_node_handle.param<bool>("show_debug_image", show_debug_image,
                                     false);
 
@@ -135,279 +132,10 @@ class AprilTagNode {
       delete tag_detector;
     }
   }
-  
-  
 
   float Eucl_distance(Eigen::Vector3d v1,Eigen::Vector3d v2){
     return sqrt(pow((v1[0]-v2[0]),2)+pow((v1[1]-v2[1]),2)+pow((v1[2]-v1[2]),2));
   }
-  int l=0,y=0,var=1,l1=0;
-  void calibrate_1( Mat& image_grayL, Mat& image_grayR/*,MatrixXf A,MatrixXf H ,
-  MatrixXf Q,
-  MatrixXf R,
-  MatrixXf P0,
-   VectorXf X0,
-    VectorXf Z,
-  VectorXf Y,
-  VectorXf X,
-  KalmanFilter1 filter1,
-  KalmanFilter1 filter2,
-  KalmanFilter1 filter3*/)
-  {
-    Eigen::Matrix3d F;
-    
-    vector<AprilTags::TagDetection> detectionsL =
-        AprilTagNode::tag_detector->extractTags(image_grayL);
-    vector<seer::AprilTag> tag_msgs;
-    vector<AprilTags::TagDetection> detectionsR =
-        tag_detector->extractTags(image_grayR);
-        if (detectionsR.size() > 0 && detectionsL.size() == 0)
-        {
-           Eigen::Vector3d translationL, translationR;
-           Eigen::Matrix3d rotationL, rotationR ,F;
-       
-            detectionsR[0].getRelativeTranslationRotation(
-              tag_size, camera_focal_length_x, camera_focal_length_y,
-              image_grayR.cols / 2, image_grayR.rows / 2, translationR,
-              rotationR);
-                P2s.push_back(Eigen::Vector3d(translationR(1), -translationR(2),
-                                         3.517- translationR(0)));
-                 
-    F <<
-      1, 0,  0,
-      0,  -1,  0,
-      0,  0,  1;
-    Eigen::Matrix3d fixed_rot = F*rotationR;
-    double yaw, pitch, roll;
-wRo_to_euler(fixed_rot, yaw, pitch, roll);
-
-                double x=P2s[l][0];
-                double y=P2s[l][1];
-                double z=P2s[l][2];
-l++;
-              poseCallback(x,y,z,roll ,pitch ,yaw);
-       /* filter1.predict();
-        Z << P2s[l][0];
-        filter1.correct( Z );
-        filter2.predict();
-        Y << P2s[l][1];
-        filter2.correct( Y );
-        filter3.predict();
-        X << P2s[l][2];
-        filter3.correct( X );
-        l++;*/
-
-        cout<<"p2s:R";
-        for(int i=0;i<3;i++)
-        cout<<P2s[j][i]<<",";
-        cout<<endl; 
-        j=j+1;
-        }
-        else if (detectionsR.size() == 0 && detectionsL.size() > 0)
-        {
-           Eigen::Vector3d translationL, translationR;
-           Eigen::Matrix3d rotationL, rotationR;
-
-        static const char *file ="/home/pikachu/catkin_ws/T_matrix.cfg";
-        Config cfg;
-        try
-        {
-          cfg.readFile(file);
-        }
-        catch(const FileIOException &fioex)
-        {
-          std::cerr<<"I/O error while reading file"<<endl;
-          return;
-        }
-           detectionsL[0].getRelativeTranslationRotation(
-                tag_size, camera_focal_length_x, camera_focal_length_y,
-                image_grayL.cols / 2, image_grayL.rows / 2, translationL,
-                rotationL);
-
-                P1s.push_back(Eigen::Vector3d(translationL(1), -translationL(2),
-                                          3.517 - translationL(0)));
-
-            vector<float> r1,r2,r3,t;
-            float error;
-            Eigen::Matrix3d R;
-            Eigen::Vector3d T;
-
-           const Setting &R1_set=cfg.lookup("Matrix.R1");
-           const Setting &R2_set=cfg.lookup("Matrix.R2");
-           const Setting &R3_set=cfg.lookup("Matrix.R3");
-           const Setting &T_set=cfg.lookup("Matrix.T");
-           for(int n=0 ; n < R1_set.getLength(); n++)
-           {
-             r1.push_back(R1_set[n]);
-             r2.push_back(R2_set[n]);
-             r3.push_back(R3_set[n]);
-             t.push_back(T_set[n]);
-             for(int i=0;i<3;i++)
-             {
-              T[i]=t[i];//cfg.lookup("Matrix.T");
-              for(int j=0;j<3;j++)
-              {
-                if(i==0) R(i,j) = r1[j];//cfg.lookup("Matrix.R1");
-                if(i==1) R(i,j) = r2[j];//cfg.lookup("Matrix.R2");
-                if(i==2) R(i,j) = r3[j];//cfg.lookup("Matrix.R3");
-                //cout<<"hi"<<endl;
-              }
-             }
-           }
-              Eigen::Vector3d V;
-              for(size_t i=0;i<P1s.size();i++)
-              {
-                V=R*P1s[i]+T;
-                //cout<<V[0]<<endl;
-              }
-            //  Eigen::Matrix3d RR=
-              P2s_calc.push_back(V);
-              
-    F <<
-      1, 0,  0,
-      0,  -1,  0,
-      0,  0,  1;
-    Eigen::Matrix3d fixed_rot = F*R*rotationL;
-    double yaw, pitch, roll;
-wRo_to_euler(fixed_rot, yaw, pitch, roll);
-
-              double x=P2s_calc[j1][0];
-                double y=P2s_calc[j1][1];
-                double z=P2s_calc[j1][2];
-
-              poseCallback(x,y,z,roll ,pitch,yaw);
-           /*   filter1.predict();
-        Z << P2s_calc[y][0];
-        filter1.correct( Z );
-        filter2.predict();
-        Y << P2s_calc[y][1];
-        filter2.correct( Y );
-        filter3.predict();
-        X << P2s_calc[y][2];
-        filter3.correct( X );
-        y++;*/
-            cout<<"P2s_calc";
-        for(int i=0;i<3;i++)
-        cout<<P2s_calc[j1][i]<<",";
-        cout<<endl; 
-        j1=j1+1;
-              
-    }
-        else if (detectionsR.size() > 0 && detectionsL.size() > 0)
-        {
-          Eigen::Vector3d translationL, translationR;
-          Eigen::Matrix3d rotationL, rotationR ,F;
-           static const char *file ="/home/pikachu/catkin_ws/T_matrix.cfg";
-           Config cfg;
-           try{
-                cfg.readFile(file);
-              }
-           catch(const FileIOException &fioex)
-        {
-          std::cerr<<"I/O error while reading file"<<endl;
-          return;
-        }
-        detectionsR[0].getRelativeTranslationRotation(
-              tag_size, camera_focal_length_x, camera_focal_length_y,
-              image_grayR.cols / 2, image_grayR.rows / 2, translationR,
-              rotationR);
-          P2s.push_back(Eigen::Vector3d(translationR(1), -translationR(2),
-                                         3.517- translationR(0)));
-       
-          //}
-          //for (size_t i = 0; i < detectionsR.size(); i++) {
-            detectionsL[0].getRelativeTranslationRotation(
-              tag_size, camera_focal_length_x, camera_focal_length_y,
-              image_grayL.cols / 2, image_grayL.rows / 2, translationL,
-              rotationL);
-
-          P1s.push_back(Eigen::Vector3d(translationL(1), -translationL(2),
-                                         3.517- translationL(0)));
-          
-    F <<
-      1, 0,  0,
-      0,  -1,  0,
-      0,  0,  1;
-    Eigen::Matrix3d fixed_rot = F*rotationR;
-    double yaw, pitch, roll;
-wRo_to_euler(fixed_rot, yaw, pitch, roll);
-                double x=P2s[l][0];
-                double y=P2s[l][1];
-                double z=P2s[l][2];
-l++;
-              poseCallback(x,y,z,roll,pitch,yaw);
-        /*  filter1.predict();
-        Z << P2s[l][0];
-        filter1.correct( Z );
-        filter2.predict();
-        Y << P2s[l][1];
-        filter2.correct( Y );
-        filter3.predict();
-        X << P2s[l][2];
-        filter3.correct( X );
-        l++;*/
-          cout<<"P1s:";
-          for(int i=0;i<3;i++)
-        cout<<P2s[j][i]<<",";
-        cout<<endl; 
-        j=j+1;
-
-
-          vector<float> r1,r2,r3,t;
-            float error;
-            Eigen::Matrix3d R;
-            Eigen::Vector3d T;
-
-            const Setting &R1_set=cfg.lookup("Matrix.R1");
-           const Setting &R2_set=cfg.lookup("Matrix.R2");
-           const Setting &R3_set=cfg.lookup("Matrix.R3");
-           const Setting &T_set=cfg.lookup("Matrix.T");
-           for(int n=0 ; n < R1_set.getLength(); n++){
-             r1.push_back(R1_set[n]);
-             r2.push_back(R2_set[n]);
-             r3.push_back(R3_set[n]);
-             t.push_back(T_set[n]);
-             for(int i=0;i<3;i++){
-              T[i]=t[i];//cfg.lookup("Matrix.T");
-              for(int j=0;j<3;j++){
-                if(i==0) R(i,j) = r1[j];//cfg.lookup("Matrix.R1");
-                if(i==1) R(i,j) = r2[j];//cfg.lookup("Matrix.R2");
-                if(i==2) R(i,j) = r3[j];//cfg.lookup("Matrix.R3");
-                //cout<<"hi"<<endl;
-              }
-            }
-              Eigen::Vector3d V;
-              for(size_t i=0;i<P1s.size();i++){
-                V=R*P1s[i]+T;
-                //cout<<V[0]<<endl;
-              P2s_calc.push_back(V);
-             /* filter1.predict();
-              Z << P2s_calc[y][0];
-        filter1.correct( Z );
-        filter2.predict();
-        Y << P2s_calc[y][1];
-        filter2.correct( Y );
-        filter3.predict();
-        X << P2s_calc[y][2];
-        filter3.correct( X );
-        y++;*/
-       /* cout<<"p1s";
-              for(int i=0;i<3;i++)
-        cout<<P2s_calc[j1][i]<<",";
-        cout<<endl; 
-        j1=j1+1;*/
-        }
-      }
-
-
-  
-  }
-  /*cout<< " X : "<<filter1.X<<endl;
-  cout<< " Y : "<<filter2.X<<endl;
-  cout<< " Z : "<<filter3.X<<endl;*/              
-
-
-}
   void calibrate(char key, Mat& image_grayL, Mat& image_grayR) {
     vector<AprilTags::TagDetection> detectionsL =
         AprilTagNode::tag_detector->extractTags(image_grayL);
@@ -420,8 +148,8 @@ l++;
       Eigen::Vector3d translationL, translationR;
       Eigen::Matrix3d rotationL, rotationR ,F;
 F<<
-     -1,0,0,
-0,1,0,
+     1,0,0,
+0,-1,0,
 0,0,1;
 
 
@@ -443,7 +171,7 @@ F<<
               rotationL);
 
           P1s.push_back(Eigen::Vector3d(translationL(1), -translationL(2),
-                                         3.517- translationL(0)));
+                                        2.89698162598 - translationL(0)));
 
         //for (size_t i = 0; i < detectionsR.size(); i++) {
           detectionsR[0].getRelativeTranslationRotation(
@@ -451,16 +179,17 @@ F<<
               image_grayR.cols / 2, image_grayR.rows / 2, translationR,
               rotationR);
           P2s.push_back(Eigen::Vector3d(translationR(1), -translationR(2),
-                                         3.517- translationR(0)));
+                                        2.89698162598 - translationR(0)));
+Eigen:Matrix3d f_rot_1=F*rotationL;
+Eigen:Matrix3d f_rot_2=F*rotationR;
 
-//wRo_to_euler(f_rot_1,yaw,)
 
         //}
         ROS_INFO("Grabbed a set of points");
-       /* cout<<"p1s";
+        cout<<"p1s";
        for(int i=0;i<3;i++)
         cout<<P1s[j][i]<<",";
-        cout<<endl;*/
+        cout<<endl;
         cout<<"p2s";
         for(int i=0;i<3;i++)
         cout<<P2s[j][i]<<",";
@@ -594,35 +323,17 @@ F<<
             }
 
             cout << endl;
-          
-          }  
+          //  P1s.clear();
+            //P2s.clear();
+          }
+        //  cout<<"222"<<endl;
+        //}
       }
-     
+      //exit(EXIT_FAILURE);
       return;
     }
 
-void initializer(MatrixXf A,MatrixXf H,MatrixXf Q,MatrixXf R,MatrixXf X0,VectorXf P0,KalmanFilter1 filter1,
-  KalmanFilter1 filter2,
-  KalmanFilter1 filter3)
-  {
-      
-  A << 1;
-  
-  H << 1;
-  
-  Q << 0;
-   R << 0.1;
-  X0 << 0;
-   P0 << 1;
-   filter1.setFixed(A, H, Q, R);
-  filter1.setInitial(X0, P0);
-  filter2.setFixed(A, H, Q, R);
-  filter2.setInitial(X0, P0);
-  filter3.setFixed(A, H, Q, R);
-  filter3.setInitial(X0, P0);
- 
-  
-}
+
   void imgCallback(const sensor_msgs::ImageConstPtr& msg_left,
                    const sensor_msgs::ImageConstPtr& msg_right) {
     cv::Mat tmpL, tmpR, image_grayL, image_grayR;
@@ -653,35 +364,10 @@ void initializer(MatrixXf A,MatrixXf H,MatrixXf Q,MatrixXf R,MatrixXf X0,VectorX
 	    if (key > 0) {
 	      calibrate(key, image_grayL, image_grayR);
 	    }
-    
-    }
-    else if(m_mode==2)
-    {
-      cv::cvtColor(tmpL, image_grayL, CV_BGR2GRAY);
-      cv::cvtColor(tmpR, image_grayR, CV_BGR2GRAY);
-
-      imshow("Left_Input", image_grayL);
-      imshow("Right_Input", image_grayR);
-      char key = (char)cv::waitKey(30);
-      //while(key!=27)
-      //initialize();
-      MatrixXf A(1, 1);
-  MatrixXf H(1, 1); 
-  MatrixXf Q(1, 1);
-  MatrixXf R(1, 1);
-  MatrixXf P0(1, 1);
-   VectorXf X0(1);
-    VectorXf Z(1);
-  VectorXf Y(1);
-  VectorXf X(1);
-  KalmanFilter1 filter1(1, 0);
-  KalmanFilter1 filter2(1, 0);
-  KalmanFilter1 filter3(1, 0);
- // initializer(A,H,Q,R,P0,X0,filter1,filter2,filter3);
-      calibrate_1(image_grayL, image_grayR /*,A,H,Q,R,P0,X0,Z,Y,X,filter1,filter2,filter3*/);
+    //  exit(EXIT_FAILURE);
     }
   }
-  
+  //config_destroy(cf);
 };
 
 /*************************************************    MAIN
@@ -698,17 +384,13 @@ void initializer(MatrixXf A,MatrixXf H,MatrixXf Q,MatrixXf R,MatrixXf X0,VectorX
 
 
 int main(int argc, char** argv) {
-  
-
-  /* Create The Filter */
-  
   ros::init(argc, argv, "seer_node");
   ros::NodeHandle nh;
   AprilTagNode atn;
   int mode,m_mode;
   static struct poptOption options[] = {
       {"mode", 'm', POPT_ARG_INT, &mode, 0,
-       "Set m=1 for calibration, m=0 for testing,m=2 for practical puropse", "NUM"},
+       "Set m=1 for calibration, m=0 for testing", "NUM"},
       POPT_AUTOHELP{NULL, 0, 0, NULL, 0, NULL, NULL}};
   POpt popt(NULL, argc, argv, options, 0);
   int c;
